@@ -277,7 +277,7 @@ def print_metrics(metrics):
     print(f"Сжатие: {metrics['Compression %']:.1f}% от оригинала")
     print(f"Сохранено точек: {metrics['Points Saved']} из {metrics['Points Original']}")
 
-def write(file_path: str,compressed_data: dict, sheet_name="Сжатые данные"):
+def write(file_path: str, compressed_data: dict, all_metrics: dict, sheet_name="Сжатые данные", metrics_sheet_name="Метрики"):
     print("write")
     dfs = []
     params = list(compressed_data.keys())
@@ -309,17 +309,25 @@ def write(file_path: str,compressed_data: dict, sheet_name="Сжатые дан�
 
     # === Запись в Excel ===
     if os.path.exists(file_path):
-        # Файл уже есть → дописываем новый лист
-        with pd.ExcelWriter(file_path, mode='a', engine='openpyxl', if_sheet_exists='overlay') as writer:
+        # Файл уже есть → дописываем новые листы
+        with pd.ExcelWriter(file_path, mode='a', engine='openpyxl', if_sheet_exists='replace') as writer:
             headers_df.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
             result_df.to_excel(writer, sheet_name=sheet_name, startrow=3, index=False, header=False)
+            
+            # Добавляем лист с метриками
+            metrics_df = pd.DataFrame(all_metrics).T  # Трансформируем для красивого вида
+            metrics_df.to_excel(writer, sheet_name=metrics_sheet_name, index=True)
     else:
         # Файла нет → создаём новый
-        with pd.ExcelWriter(file_path, mode='w', engine='openpyxl', if_sheet_exists='overlay') as writer:
+        with pd.ExcelWriter(file_path, mode='w', engine='openpyxl') as writer:
             headers_df.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
             result_df.to_excel(writer, sheet_name=sheet_name, startrow=3, index=False, header=False)
+            
+            # Добавляем лист с метриками
+            metrics_df = pd.DataFrame(all_metrics).T
+            metrics_df.to_excel(writer, sheet_name=metrics_sheet_name, index=True)
 
-    print(f"Данные записаны в файл '{file_path}' на лист '{sheet_name}'")
+    print(f"Данные записаны в файл '{file_path}' на листы '{sheet_name}' и '{metrics_sheet_name}'")
 
 # В конце файла clean_swinginging_door.py добавь:
 def algorithm(file_path: str):
@@ -331,11 +339,18 @@ def algorithm(file_path: str):
         E = parametrs['АТ-9'][key]['Шкала'] * parametrs['АТ-9'][key]['Сжатие, %']/100
         compressed_df = swinging_door(samples[key], E)
         compressed_data[key] = compressed_df
-        
-        # Рассчитываем метрики
+
+        print(f"Параметр - {key}, Погрешность - {E}")
+        print(f"Исходных точек: {len(samples[key])}")
+        print(f"Сжатых точек:   {len(compressed_df)}")
+        print(f"Сжатие:         {len(compressed_df) / len(samples[key]) * 100:.2f}% от исходных")
+        print()
+
+        print(type(samples[key]['Время'][1]), type(compressed_data[key]['Время'][1]))
+
         metrics_my = calculate_metrics(samples[key], compressed_data[key])
-        all_metrics[key] = metrics_my
-    
-    write(file_path, compressed_data, sheet_name="Сжатые данные")
-    
-    return compressed_data, all_metrics
+        all_metrics[key] = metrics_my  # 📌 Сохраняем метрики
+        print_metrics(metrics_my)
+
+    write(file_path, compressed_data, all_metrics, sheet_name="Сжатые данные")
+    return compressed_data, all_metrics  # 📌 Возвращаем оба объекта

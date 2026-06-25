@@ -186,14 +186,88 @@ def analyze_delay_and_maxima(setpoint_data, output_data, max_shift=500,
         'abs_error_shifted': abs_error_shifted
     }
 
-def algorithm(file_path:str, sheet:str):
+def algorithm(file_path: str, sheet: str):
     series_dict = read_and_process_file2(file_path, sheet)
 
-    results={}
-
+    results = {}
+    
     for i in range(0, len(series_dict.keys()), 2):
-        result = analyze_delay_and_maxima(series_dict[list(series_dict.keys())[i]]["Значение"].values, series_dict[f"{list(series_dict.keys())[i]}_SV"]["Значение"].values, max_shift=500,
-                                    lower_quantile=0.15, upper_quantile=0.9, peak_distance=3)
-        results[list(series_dict.keys())[i]]=result
+        key = list(series_dict.keys())[i]
+        result = analyze_delay_and_maxima(
+            series_dict[key]["Значение"].values, 
+            series_dict[f"{key}_SV"]["Значение"].values, 
+            max_shift=500,
+            lower_quantile=0.15, 
+            upper_quantile=0.9, 
+            peak_distance=3
+        )
+        results[key] = result
+        print(result)
+    
+    # 📌 Сохранение в файл
+    write_results(file_path, results, sheet_name="Результаты анализа")
+    
+    return results
 
+def write_results(file_path: str, results: dict, sheet_name="Результаты анализа"):
+    """
+    Сохранение результатов в Excel файл
+    """
+    import os
+    
+    # Создаём DataFrame из результатов
+    metrics_df = pd.DataFrame(results).T
+    
+    # === Запись в Excel ===
+    if os.path.exists(file_path):
+        with pd.ExcelWriter(file_path, mode='a', engine='openpyxl', if_sheet_exists='replace') as writer:
+            metrics_df.to_excel(writer, sheet_name=sheet_name, index=True)
+    else:
+        metrics_df.to_excel(file_path, sheet_name=sheet_name, index=True)
+    
+    print(f"Результаты записаны в файл '{file_path}' на лист '{sheet_name}'")
+
+def algorithm(file_path: str, sheet: str):
+    series_dict = read_and_process_file2(file_path, sheet)
+
+    results = {}
+    keys = list(series_dict.keys())
+    
+    print(f"Найденные ключи в series_dict: {keys}")
+    
+    for i in range(0, len(keys), 2):
+        key = keys[i]
+        
+        # Проверка: есть ли ключ _SV
+        sv_key = f"{key}_SV"
+        
+        # Если ключ _SV не найден, попробуйте найти его с другим форматом
+        if sv_key not in series_dict:
+            # Поиск ключа, содержащего _SV
+            found_sv = None
+            for k in keys:
+                if '_SV' in k and k.replace('_SV', '') == key:
+                    found_sv = k
+                    break
+            
+            if found_sv:
+                sv_key = found_sv
+            else:
+                print(f"❌ Ключ {sv_key} не найден в series_dict")
+                continue
+        
+        result = analyze_delay_and_maxima(
+            series_dict[key]["Значение"].values, 
+            series_dict[sv_key]["Значение"].values, 
+            max_shift=500,
+            lower_quantile=0.15, 
+            upper_quantile=0.9, 
+            peak_distance=3
+        )
+        results[key] = result
+        print(result)
+    
+    # Сохранение в файл
+    write_results(file_path, results, sheet_name="Результаты анализа")
+    
     return results

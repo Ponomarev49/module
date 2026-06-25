@@ -1,15 +1,15 @@
 import streamlit as st
 import pandas as pd
 import tempfile
-import io
-from pathlib import Path
 import sys
+from pathlib import Path
+import io
 
 # Настройка страницы с широким контейнером
 st.set_page_config(
     page_title="Алгоритмы обработки данных", 
     page_icon="🔧",
-    layout="wide"  # 📌 Широкий режим
+    layout="wide"
 )
 
 # Главная страница
@@ -75,18 +75,12 @@ def rotating_door_algorithm():
                 
                 from clean_swinging_door import algorithm
                 
-                # ЗАПУСК АЛГОРИТМА
                 compressed_data, all_metrics = algorithm(tmp_path)
                 
                 st.success("✅ Алгоритм успешно выполнен!")
                 
-                # ──────────────────────────────────────────────
-                # КРАСИВЫЙ ВЫВОД МЕТРИК ДЛЯ КАЖДОГО ПАРАМЕТРА
-                # ──────────────────────────────────────────────
-                
-                # Самые важные метрики (без массивов)
                 important_metrics = {
-                    'MAE': 'MAE ( (погрешность)',
+                    'MAE': 'MAE (погрешность)',
                     'R²': 'R² (коэф. детерминации)',
                     'Compression Ratio': 'Коэф. сжатия (x)',
                     'Compression %': 'Сжатие (%)',
@@ -103,11 +97,9 @@ def rotating_door_algorithm():
                     st.markdown("---")
                     st.subheader(f"🔹 **{param_name}**")
                     
-                    # Основная информация
                     st.info(f"📊 **Сохранено точек:** {len(param_data)}")
                     st.info(f"⏱️ **Временной диапазон:** {param_data['Время'].min()} → {param_data['Время'].max()}")
                     
-                    # Таблица с метриками
                     if param_name in all_metrics:
                         metrics = all_metrics[param_name]
                         
@@ -116,7 +108,6 @@ def rotating_door_algorithm():
                         for metric_key, metric_name in important_metrics.items():
                             if metric_key in metrics:
                                 value = metrics[metric_key]
-                                # Форматируем числа красиво
                                 if isinstance(value, float):
                                     if metric_key in ['Compression %', 'MAPE (%)']:
                                         display_data[metric_name] = f"{value:.2f}%"
@@ -129,11 +120,9 @@ def rotating_door_algorithm():
                                 else:
                                     display_data[metric_name] = value
                         
-                        # Вывод как таблицу
                         df_metrics = pd.DataFrame([display_data])
                         st.dataframe(df_metrics, hide_index=True, use_container_width=True)
                         
-                        # Блок с улучшением (коэф. сжатия)
                         if 'Compression Ratio' in metrics:
                             comp_ratio = metrics['Compression Ratio']
                             if comp_ratio > 3:
@@ -143,7 +132,6 @@ def rotating_door_algorithm():
                             else:
                                 st.warning(f"⚠️ **Коэффициент сжатия: {comp_ratio:.2f}x** (слабо)")
                         
-                        # Блок с погрешностью
                         if 'MAE' in metrics and 'R²' in metrics:
                             mae = metrics['MAE']
                             r2 = metrics['R²']
@@ -153,10 +141,9 @@ def rotating_door_algorithm():
                                 st.info(f"✓ **Точность хорошая:** MAE={mae:.4f}, R²={r2:.4f}")
                             else:
                                 st.warning(f"⚠️ **Точность средняя:** MAE={mae:.4f}, R²={r2:.4f}")
-                        
-                # ──────────────────────────────────────────────
-                # СВОДНАЯ ТАБЛИЦА ПО ВСЕМ ПАРАМЕТРАМ
-                # ──────────────────────────────────────────────
+                    
+                    st.write("**Последние 10 записей:**")
+                    st.dataframe(param_data.tail(10), use_container_width=True, hide_index=True)
                 
                 st.markdown("---")
                 st.subheader("📊 Общая статистика сжатия")
@@ -181,47 +168,37 @@ def rotating_door_algorithm():
                 df_summary = pd.DataFrame(summary_data)
                 st.dataframe(df_summary, use_container_width=True, hide_index=True)
                 
-                # ──────────────────────────────────────────────
-                # КНОПКА СКАЧАТЬ EXCEL
-                # ──────────────────────────────────────────────
+                if len(summary_data) > 0:
+                    best_idx = df_summary["Коэф. (x)"].idxmax()
+                    best_comp = df_summary.loc[best_idx]
+                    st.success(f"🏆 **Лучше сжатие:** {best_comp['Параметр']} с коэф. {best_comp['Коэф. (x)']}x ({best_comp['Сжатие (%)']}%)")
+                    
+                    best_idx_acc = df_summary["R²"].idxmax()
+                    best_acc = df_summary.loc[best_idx_acc]
+                    st.info(f"✨ **Лучше точность:** {best_acc['Параметр']} с R²={best_acc['R²']}, MAE={best_acc['MAE']}")
                 
                 st.markdown("---")
                 st.subheader("💾 Скачивание результата")
                 
                 output_path = tmp_path + "_result.xlsx"
                 
-                # Копируем оригинал и добавляем лист с сжатыми данными
                 with pd.ExcelFile(tmp_path) as xls_in:
                     with pd.ExcelWriter(output_path, engine='openpyxl') as xls_out:
                         for sheet in xls_in.sheet_names:
                             df = pd.read_excel(xls_in, sheet_name=sheet)
                             df.to_excel(xls_out, sheet_name=sheet, index=False)
-                    
-                    # Добавляем лист с сжатыми данными
-                    dfs = []
-                    for param in compressed_data.keys():
-                        df = compressed_data[param][['Время', 'Значение']].reset_index(drop=True)
-                        dfs.append(df)
-                    
-                    result_df = pd.concat(dfs, axis=1)
-                    
-                    with pd.ExcelFile(output_path) as xls_in:
-                        with pd.ExcelWriter(output_path, mode='a', engine='openpyxl', if_sheet_exists='replace') as xls_out:
-                            result_df.to_excel(xls_out, sheet_name="Сжатые данные", index=False)
                 
-                # Чит для скачивания
                 with open(output_path, 'rb') as f:
                     excel_bytes = f.read()
                 
                 st.download_button(
-                    label="📥 Скачать Excel с сжатыми данными",
+                    label="📥 Скачать Excel с сжатыми данными и метриками",
                     data=excel_bytes,
-                    file_name="compressed_data_result.xlsx",
+                    file_name="compressed_data_with_metrics.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
                 
-                # Очищаем временные файлы
                 Path(tmp_path).unlink()
                 Path(output_path).unlink()
                 
@@ -234,11 +211,11 @@ def rotating_door_algorithm():
     
     st.markdown("---")
 
-
 # Алгоритм 2: Определение характеристик переходного процесса
 def transient_process_algorithm():
     st.title("📈 Алгоритм «Определение характеристик переходного процесса»")
     st.write("Этот алгоритм используется для анализа переходных процессов в автоматизированных системах.")
+    st.write("Загрузите файл .xlsx для обработки.")
     
     uploaded_file, sheet_names = process_file_upload()
     
@@ -254,52 +231,46 @@ def transient_process_algorithm():
                     tmp_path = tmp_file.name
                     tmp_file.write(uploaded_file.getvalue())
                 
-                current_dir = Path(__file__).parent
-                sys.path.insert(0, str(current_dir))
+                sys.path.insert(0, str(Path(__file__).parent))
                 
-                from clean_analyze import algorithm, read_and_process_file2, analyze_delay_and_maxima
+                from clean_analyze import algorithm
                 
                 result = algorithm(tmp_path, sheet_choice)
                 
+                if len(result) == 0:
+                    st.warning("⚠️ **Результат пуст!** Возможно, не найдены пары ключей с _SV")
+                    st.info("💡 Проверьте файл Excel: ключи должны иметь формат `XXX` и `XXX_SV`")
+                    Path(tmp_path).unlink()
+                    return
+                
                 st.success("✅ Алгоритм успешно выполнен!")
                 
-                # Очищаем временный файл
-                Path(tmp_path).unlink()
-                
-                # ──────────────────────────────────────────────
-                # КРАСИВЫЙ ВЫВОД РЕЗУЛЬТАТОВ
-                # ──────────────────────────────────────────────
-                
-                # Параметры, которые будем показывать (без массивов)
                 important_params = {
-                    "delay": "Задержка (с)",
-                    "delay_hours": "Задержка (ч)",
+                    "delay": "Задача (с)",
+                    "delay_hours": "Задача (ч)",
                     "original_mae": "Original MAE",
                     "shifted_mae": "Shifted MAE",
                     "improvement": "Улучшение (%)",
-                    "mean_maxima": "Амплитуда колебаний (м3)",
-                    # "median_maxima": "Мед. максимумы",
-                    "maxima_ratio": "Скорость регулирования (м3/ч)",
-                    # "lower_bound": "Нижняя граница",
-                    # "upper_bound": "Верхняя граница",
-                    # "n_peaks_total": "Всго пиков",
-                    # "n_peaks_filtered": "Фильтр. пиков",
-                    # "n_removed_lower": "Удал. (ниж.)",
-                    # "n_removed_upper": "Удал. (верх.)"
+                    "mean_maxima": "Сред. максимумы",
+                    "median_maxima": "Мед. максимумы",
+                    "maxima_ratio": "Коэф. максимумов",
+                    "lower_bound": "Нижняя граница",
+                    "upper_bound": "Верхняя граница",
+                    "n_peaks_total": "Всего пиков",
+                    "n_peaks_filtered": "Фильтр. пиков",
+                    "n_removed_lower": "Удал. (ниж.)",
+                    "n_removed_upper": "Удал. (верх.)"
                 }
                 
-                # Вывод для каждого датчика
                 for sensor_name, sensor_data in result.items():
                     st.markdown("---")
                     st.subheader(f"🔹 **{sensor_name}**")
                     
-                    # Создаём таблицу с важными параметрами
                     display_data = {}
                     
                     for param_key, param_name in important_params.items():
                         if param_key in sensor_data:
                             value = sensor_data[param_key]
-                            # Форматируем числа красиво
                             if isinstance(value, float):
                                 if param_key in ["delay_hours", "mean_maxima", "median_maxima", 
                                                  "maxima_ratio", "lower_bound", "upper_bound"]:
@@ -311,11 +282,9 @@ def transient_process_algorithm():
                             else:
                                 display_data[param_name] = value
                     
-                    # Вывод как таблицу
                     df_display = pd.DataFrame([display_data])
                     st.dataframe(df_display, hide_index=True, use_container_width=True)
                     
-                    # Блок с улучшением (выделяем цветом)
                     if "improvement" in sensor_data:
                         improvement = sensor_data["improvement"]
                         if improvement > 40:
@@ -325,41 +294,61 @@ def transient_process_algorithm():
                         else:
                             st.warning(f"⚠️ **Улучшение MAE: {improvement:.2f}%**")
                     
-                    # Блок с задержкой
                     if "delay_hours" in sensor_data:
-                        st.info(f"⏱️ **Задержка: {sensor_data['delay']} с ({sensor_data['delay_hours']:.3f} ч)**")
+                        st.info(f"⏱️ **Задача: {sensor_data['delay']} с ({sensor_data['delay_hours']:.3f} ч)**")
                 
-                # Общий вывод по всем датчикам
                 st.markdown("---")
                 st.subheader("📊 Общая статистика")
                 
-                # Создаём сводную таблицу
                 summary_data = []
                 for sensor_name, sensor_data in result.items():
                     summary_row = {
                         "Датчик": sensor_name,
-                        "Задержка (с)": sensor_data.get("delay_hours", 0),
+                        "Задача (с)": sensor_data.get("delay", 0),
                         "Улучшение (%)": round(sensor_data.get("improvement", 0), 2),
                         "Original MAE": round(sensor_data.get("original_mae", 0), 4),
                         "Shifted MAE": round(sensor_data.get("shifted_mae", 0), 4),
-                        "Амплитуда колебаний (м3)": round(sensor_data.get("mean_maxima", 0), 4),
-                        "Скорость регулирования (м3/ч)": round(sensor_data.get("maxima_ratio", 0), 4),
+                        "Пиков (всего)": sensor_data.get("n_peaks_total", 0),
+                        "Пиков (фильтр.)": sensor_data.get("n_peaks_filtered", 0)
                     }
                     summary_data.append(summary_row)
                 
                 df_summary = pd.DataFrame(summary_data)
                 st.dataframe(df_summary, use_container_width=True, hide_index=True)
                 
-                # Melhor improvement
-                # if len(summary_data) > 0:
-                #     best = df_summary.loc[df_summary["Улучшение (%)"].max()]
-                #     st.success(f"🏆 **Лучший датчик:** {best['Датчик']} с улучшением {best['Улучшение (%)']}%")
+                if len(summary_data) > 0:
+                    best_idx = df_summary["Улучшение (%)"].idxmax()
+                    best = df_summary.loc[best_idx]
+                    st.success(f"🏆 **Лучший датчик:** {best['Датчик']} с улучшением {best['Улучшение (%)']}%")
                 
-            except ImportError as e:
-                st.error(f"❌ Не удалось импортировать алгоритм из clean_analyze.py: {e}")
-                st.info("💡 Убедись, что файл clean_analyze.py находится в той же папке, как app.py")
+                st.markdown("---")
+                st.subheader("💾 Скачивание результата")
+                
+                output_path = tmp_path + "_result.xlsx"
+                
+                with pd.ExcelFile(tmp_path) as xls_in:
+                    with pd.ExcelWriter(output_path, engine='openpyxl') as xls_out:
+                        for sheet in xls_in.sheet_names:
+                            df = pd.read_excel(xls_in, sheet_name=sheet)
+                            df.to_excel(xls_out, sheet_name=sheet, index=False)
+                
+                with open(output_path, 'rb') as f:
+                    excel_bytes = f.read()
+                
+                st.download_button(
+                    label="📥 Скачать Excel с результатами анализа",
+                    data=excel_bytes,
+                    file_name="transient_process_results.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+                
+                Path(tmp_path).unlink()
+                Path(output_path).unlink()
+                
             except Exception as e:
-                st.error(f"❌Ошибка при выполнении алгоритма: {e}")
+                st.error(f"❌Ошибка: {e}")
+                st.exception(e)
     
     st.markdown("---")
 
